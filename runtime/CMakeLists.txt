@@ -4,6 +4,7 @@ project(psp_rpg_runtime LANGUAGES CXX)
 
 add_executable(${PROJECT_NAME}
     src/main.cpp
+    src/game_pak.cpp
     src/platform_psp.cpp
     src/renderer_psp.cpp
 )
@@ -26,4 +27,3 @@ create_pbp_file(
     TITLE "PSP RPG Engine"
     VERSION 01.00
 )
-

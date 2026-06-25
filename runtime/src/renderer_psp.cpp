@@ -6,7 +6,6 @@
 namespace {
 
 constexpr int buffer_width = 512;
-constexpr int buffer_height = 272;
 
 alignas(64) unsigned int display_list[32768];
 

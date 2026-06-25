@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dotnet:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build editor and tools
+        run: dotnet build editor/PSPRpgEditor.sln --configuration Release
+      - name: Run format and package tests
+        run: dotnet run --project tests/PSPRpgEditor.Tests --configuration Release --no-build
+      - name: Compile demo package
+        run: dotnet run --project tools/PSPRpgAssetCompiler --configuration Release --no-build -- samples/demo_game/demo.psprpg artifacts/demo/game.pak

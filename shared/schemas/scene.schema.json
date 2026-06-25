@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psprpg.dev/schemas/scene-v1.json",
+  "title": "PSP RPG Studio scene",
+  "type": "object",
+  "required": ["formatVersion", "id", "name", "width", "height", "entities"],
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1 },
+    "width": { "type": "integer", "minimum": 480 },
+    "height": { "type": "integer", "minimum": 272 },
+    "entities": { "type": "array" }
+  }
+}

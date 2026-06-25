@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "id": "22222222-2222-2222-2222-222222222222",
+  "name": "Main Scene",
+  "width": 480,
+  "height": 272,
+  "entities": [
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Player",
+      "transform": {
+        "x": 224,
+        "y": 120,
+        "width": 32,
+        "height": 32
+      },
+      "spriteRenderer": {
+        "color": "#4DA6FFFF",
+        "visible": true
+      }
+    }
+  ]
+}

@@ -7,12 +7,13 @@
 - scene preview;
 - PSP runtime boot and GU test scene.
 
-## M1 - First end-to-end build
+## M1 - First end-to-end build (implemented)
 
-- asset compiler CLI;
-- binary scene format;
-- editor Build for PSP command;
-- the same entity visible in editor and PSP runtime.
+- project format v2 with external scenes and v1 migration;
+- validator and deterministic asset compiler CLI;
+- versioned `game.pak` and PSP package reader;
+- editor Build/Run commands and PSPSDK/PPSSPP detection;
+- the same transform and color data used by editor and PSP runtime.
 
 ## M2 - Map authoring
 
@@ -42,4 +43,3 @@
 - package compression;
 - memory-budget diagnostics;
 - project templates and distributable PSP builds.
-

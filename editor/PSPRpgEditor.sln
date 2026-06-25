@@ -6,6 +6,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PSPRpgEditor.Core", "src\PS
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PSPRpgEditor.App", "src\PSPRpgEditor.App\PSPRpgEditor.App.csproj", "{2C332337-9DE1-48FB-A0AE-4AC0BD28A3C0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PSPRpgAssetCompiler", "..\tools\PSPRpgAssetCompiler\PSPRpgAssetCompiler.csproj", "{AA61DA60-78EF-4E42-BA9A-0F51BE18A916}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PSPRpgEditor.Tests", "..\tests\PSPRpgEditor.Tests\PSPRpgEditor.Tests.csproj", "{6C3EA32D-6163-4558-B7E8-B00D23857592}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +24,13 @@ Global
 		{2C332337-9DE1-48FB-A0AE-4AC0BD28A3C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2C332337-9DE1-48FB-A0AE-4AC0BD28A3C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2C332337-9DE1-48FB-A0AE-4AC0BD28A3C0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA61DA60-78EF-4E42-BA9A-0F51BE18A916}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA61DA60-78EF-4E42-BA9A-0F51BE18A916}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA61DA60-78EF-4E42-BA9A-0F51BE18A916}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA61DA60-78EF-4E42-BA9A-0F51BE18A916}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C3EA32D-6163-4558-B7E8-B00D23857592}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C3EA32D-6163-4558-B7E8-B00D23857592}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C3EA32D-6163-4558-B7E8-B00D23857592}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C3EA32D-6163-4558-B7E8-B00D23857592}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
-

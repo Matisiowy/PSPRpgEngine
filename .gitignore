@@ -1,4 +1,6 @@
 build/
+Build/
+**/Build/
 out/
 artifacts/
 .vs/
@@ -11,4 +13,3 @@ obj/
 *.prx
 *.pbp
 *.pak
-

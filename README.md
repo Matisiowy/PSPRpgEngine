@@ -14,10 +14,10 @@ The repository contains:
 
 ## Current milestone
 
-The editor can create, open and save `.psprpg` projects, inspect scene objects,
-add and delete entities, and position them on a snapping 2D canvas. The
-`.psprpg` authoring format contains readable, versioned JSON. The PSP runtime
-initializes the GU, displays a test scene, and exits cleanly through HOME.
+The M1 pipeline is functional: the editor stores v2 projects with external scene
+files, migrates v1 projects, validates and compiles scenes into `game.pak`, and
+can launch a built `EBOOT.PBP` in PPSSPP. The PSP runtime reads the package and
+renders the startup scene's `Transform2D` and `SpriteRenderer` components.
 
 ## Build the PC editor
 
@@ -26,6 +26,22 @@ Requires the .NET 8 SDK on Windows.
 ```powershell
 dotnet build editor/PSPRpgEditor.sln
 dotnet run --project editor/src/PSPRpgEditor.App
+```
+
+Open `samples/demo_game/demo.psprpg` to test the v2 project. Use **Build >
+Build game.pak** to create:
+
+```text
+samples/demo_game/Build/PSP/GAME/PSP RPG Demo/game.pak
+```
+
+Configure PSPSDK and PPSSPP paths under **Build > Toolchain settings**.
+
+## Test and compile assets
+
+```powershell
+dotnet run --project tests/PSPRpgEditor.Tests
+dotnet run --project tools/PSPRpgAssetCompiler -- samples/demo_game/demo.psprpg
 ```
 
 ## Build the PSP runtime
@@ -49,5 +65,5 @@ The resulting `EBOOT.PBP` can be launched with PPSSPP or copied to
 
 ## Design rule
 
-Editor JSON is an authoring format. The final PSP build will use a compact,
-versioned `game.pak`; the PSP will not parse the complete editor project.
+Editor JSON is an authoring format. PSP builds use the compact, versioned
+`game.pak`; the PSP never parses the editor project.

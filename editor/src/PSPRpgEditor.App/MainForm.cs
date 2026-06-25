@@ -1,21 +1,16 @@
-using System.Globalization;
 using PSPRpgEditor.Core;
 
 namespace PSPRpgEditor.App;
 
 public sealed class MainForm : Form
 {
-    private static readonly Color WindowColor = Color.FromArgb(30, 32, 37);
-    private static readonly Color PanelColor = Color.FromArgb(39, 42, 48);
-    private static readonly Color HeaderColor = Color.FromArgb(47, 51, 58);
-    private static readonly Color AccentColor = Color.FromArgb(66, 150, 250);
-    private static readonly Color TextColor = Color.FromArgb(225, 229, 235);
-
     private readonly TreeView hierarchy = new();
-    private readonly PropertyGrid inspector = new();
+    private readonly InspectorPanel inspector = new();
     private readonly SceneView sceneView = new();
+    private readonly AssetBrowserPanel assetBrowser = new();
+    private readonly RichTextBox buildLog = new();
     private readonly ToolStripStatusLabel status = new("Ready");
-    private readonly Label sceneTitle = new();
+    private readonly EditorSettings settings = ToolchainService.LoadSettings();
 
     private GameProject project = GameProject.CreateDefault();
     private string? projectPath;
@@ -23,80 +18,42 @@ public sealed class MainForm : Form
 
     public MainForm(string? startupProject = null)
     {
-        Text = "PSP RPG Editor";
+        Text = "PSP RPG Studio";
         Width = 1360;
         Height = 820;
         MinimumSize = new Size(1000, 650);
-        BackColor = WindowColor;
-        ForeColor = TextColor;
+        BackColor = EditorTheme.Window;
+        ForeColor = EditorTheme.Text;
 
-        var menu = BuildMenu();
-        var toolbar = BuildToolbar();
-        var statusStrip = BuildStatusStrip();
-        var workspace = BuildWorkspace();
+        Controls.Add(BuildWorkspace());
+        Controls.Add(BuildStatusStrip());
+        Controls.Add(BuildToolbar());
+        Controls.Add(BuildMenu());
 
-        Controls.Add(workspace);
-        Controls.Add(statusStrip);
-        Controls.Add(toolbar);
-        Controls.Add(menu);
-        MainMenuStrip = menu;
-
-        hierarchy.AfterSelect += (_, eventArgs) => SelectObject(eventArgs.Node?.Tag);
-        inspector.PropertyValueChanged += (_, _) =>
-        {
-            RefreshHierarchy(inspector.SelectedObject);
-            sceneView.Invalidate();
-            sceneTitle.Text = sceneView.Scene?.Name ?? "Scene";
-            MarkChanged();
-        };
+        hierarchy.AfterSelect += (_, e) => SelectObject(e.Node?.Tag);
+        inspector.ObjectChanged += ProjectChanged;
         sceneView.SelectionChanged += entity =>
         {
             inspector.SelectedObject = entity;
             SelectHierarchyObject(entity);
         };
-        sceneView.SceneChanged += () =>
-        {
-            inspector.Refresh();
-            MarkChanged();
-        };
+        sceneView.SceneChanged += ProjectChanged;
+        FormClosing += (_, e) => e.Cancel = !ConfirmDiscardChanges();
 
-        FormClosing += (_, eventArgs) =>
-        {
-            if (!ConfirmDiscardChanges())
-            {
-                eventArgs.Cancel = true;
-            }
-        };
-
-        if (!string.IsNullOrWhiteSpace(startupProject))
-        {
-            try
-            {
-                ShowProject(ProjectSerializer.Load(startupProject), startupProject);
-                status.Text = $"Opened {Path.GetFileName(startupProject)}";
-            }
-            catch (Exception exception)
-            {
-                ShowProject(project, null);
-                MessageBox.Show(exception.Message, "Cannot open project",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
+        if (startupProject is not null)
+            OpenProject(startupProject);
         else
-        {
             ShowProject(project, null);
-        }
     }
 
     private MenuStrip BuildMenu()
     {
         var menu = new MenuStrip
         {
-            BackColor = HeaderColor,
-            ForeColor = TextColor,
-            RenderMode = ToolStripRenderMode.System
+            BackColor = EditorTheme.Header,
+            ForeColor = EditorTheme.Text,
+            Renderer = new ToolStripProfessionalRenderer(new DarkColorTable())
         };
-
         var file = new ToolStripMenuItem("&File");
         file.DropDownItems.Add("&New Project", null, (_, _) => NewProject());
         file.DropDownItems.Add("&Open...", null, (_, _) => OpenProject());
@@ -107,55 +64,73 @@ public sealed class MainForm : Form
 
         var edit = new ToolStripMenuItem("&Edit");
         edit.DropDownItems.Add("&Add Entity", null, (_, _) => AddEntity());
-        var deleteItem = new ToolStripMenuItem(
+        edit.DropDownItems.Add(new ToolStripMenuItem(
             "&Delete Selected", null, (_, _) => DeleteSelected())
-        {
-            ShortcutKeys = Keys.Delete
-        };
-        edit.DropDownItems.Add(deleteItem);
+        { ShortcutKeys = Keys.Delete });
 
         var build = new ToolStripMenuItem("&Build");
-        build.DropDownItems.Add("Build for PSP", null, (_, _) => ShowBuildInfo());
+        build.DropDownItems.Add("Build game.pak", null, (_, _) => BuildProject(false));
+        build.DropDownItems.Add("Build && Run PPSSPP", null, (_, _) => BuildProject(true));
+        build.DropDownItems.Add(new ToolStripSeparator());
+        build.DropDownItems.Add("Toolchain settings...", null, (_, _) => ConfigureTools());
 
         menu.Items.AddRange([file, edit, build]);
+        MainMenuStrip = menu;
         return menu;
     }
 
     private ToolStrip BuildToolbar()
     {
-        var toolbar = new ToolStrip
+        var bar = new ToolStrip
         {
-            BackColor = HeaderColor,
-            ForeColor = TextColor,
+            BackColor = EditorTheme.Header,
+            ForeColor = EditorTheme.Text,
             GripStyle = ToolStripGripStyle.Hidden,
-            Padding = new Padding(6, 3, 6, 3)
+            Padding = new Padding(7, 4, 7, 4),
+            Renderer = new ToolStripProfessionalRenderer(new DarkColorTable())
         };
-        toolbar.Items.Add(MakeButton("New", (_, _) => NewProject()));
-        toolbar.Items.Add(MakeButton("Open", (_, _) => OpenProject()));
-        toolbar.Items.Add(MakeButton("Save", (_, _) => SaveProject(false)));
-        toolbar.Items.Add(new ToolStripSeparator());
-        toolbar.Items.Add(MakeButton("+ Entity", (_, _) => AddEntity()));
-        toolbar.Items.Add(MakeButton("Delete", (_, _) => DeleteSelected()));
-        toolbar.Items.Add(new ToolStripSeparator());
-        toolbar.Items.Add(new ToolStripLabel("Snap: 16 px"));
-        toolbar.Items.Add(new ToolStripSeparator());
-        toolbar.Items.Add(MakeButton("Build PSP", (_, _) => ShowBuildInfo()));
-        return toolbar;
+        bar.Items.Add(Button("＋", "New project", (_, _) => NewProject()));
+        bar.Items.Add(Button("⌂", "Open project", (_, _) => OpenProject()));
+        bar.Items.Add(Button("▣", "Save project", (_, _) => SaveProject(false)));
+        bar.Items.Add(new ToolStripSeparator());
+        bar.Items.Add(Button("＋ Object", "Add entity", (_, _) => AddEntity()));
+        bar.Items.Add(Button("Delete", "Delete selected", (_, _) => DeleteSelected()));
+        bar.Items.Add(new ToolStripSeparator());
+        bar.Items.Add(Button("▶  Play", "Build and launch PPSSPP",
+            (_, _) => BuildProject(true)));
+        bar.Items.Add(Button("Build PSP", "Build distributable game",
+            (_, _) => BuildProject(false)));
+        bar.Items.Add(new ToolStripSeparator());
+        bar.Items.Add(new ToolStripLabel("  2D  |  Grid 16  |  PSP 480x272")
+        {
+            ForeColor = Color.FromArgb(150, 157, 169)
+        });
+        return bar;
     }
 
-    private static ToolStripButton MakeButton(string text, EventHandler click)
+    private static ToolStripButton Button(
+        string text, string tooltip, EventHandler handler)
     {
-        var button = new ToolStripButton(text) { DisplayStyle = ToolStripItemDisplayStyle.Text };
-        button.Click += click;
+        var button = new ToolStripButton(text)
+        {
+            ToolTipText = tooltip,
+            ForeColor = EditorTheme.Text,
+            Margin = new Padding(2, 0, 2, 0)
+        };
+        button.Click += handler;
         return button;
     }
 
     private StatusStrip BuildStatusStrip()
     {
-        var strip = new StatusStrip { BackColor = HeaderColor, ForeColor = TextColor };
+        var strip = new StatusStrip
+        {
+            BackColor = EditorTheme.Header,
+            ForeColor = EditorTheme.Text
+        };
         strip.Items.Add(status);
         strip.Items.Add(new ToolStripStatusLabel { Spring = true });
-        strip.Items.Add(new ToolStripStatusLabel("PSP 480 × 272  |  Grid 16"));
+        strip.Items.Add(new ToolStripStatusLabel("PSP 480 x 272 | Grid 16"));
         return strip;
     }
 
@@ -164,7 +139,7 @@ public sealed class MainForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            BackColor = WindowColor,
+            BackColor = EditorTheme.Window,
             ColumnCount = 3,
             RowCount = 1,
             Padding = new Padding(6)
@@ -172,113 +147,158 @@ public sealed class MainForm : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         hierarchy.Dock = DockStyle.Fill;
-        hierarchy.BackColor = PanelColor;
-        hierarchy.ForeColor = TextColor;
+        hierarchy.BackColor = EditorTheme.Panel;
+        hierarchy.ForeColor = EditorTheme.Text;
         hierarchy.BorderStyle = BorderStyle.None;
         hierarchy.HideSelection = false;
-        hierarchy.FullRowSelect = true;
 
         inspector.Dock = DockStyle.Fill;
-        inspector.BackColor = PanelColor;
-        inspector.ViewBackColor = PanelColor;
-        inspector.ViewForeColor = TextColor;
-        inspector.ViewBorderColor = HeaderColor;
-        inspector.HelpBackColor = PanelColor;
-        inspector.HelpForeColor = TextColor;
-        inspector.CommandsBackColor = PanelColor;
-        inspector.CommandsForeColor = TextColor;
-        inspector.PropertySort = PropertySort.Categorized;
-        inspector.ToolbarVisible = false;
 
-        sceneView.Dock = DockStyle.Fill;
-        sceneTitle.Text = "Scene";
-        sceneTitle.Dock = DockStyle.Fill;
-        sceneTitle.ForeColor = TextColor;
-        sceneTitle.TextAlign = ContentAlignment.MiddleLeft;
-        sceneTitle.Padding = new Padding(8, 0, 0, 0);
-
-        layout.Controls.Add(CreatePanel("HIERARCHY", hierarchy), 0, 0);
-        layout.Controls.Add(CreateScenePanel(), 1, 0);
-        layout.Controls.Add(CreatePanel("INSPECTOR", inspector), 2, 0);
+        layout.Controls.Add(BuildLeftSidebar(), 0, 0);
+        layout.Controls.Add(BuildCenterWorkspace(), 1, 0);
+        layout.Controls.Add(EditorTheme.CreatePanel("OBJECT INSPECTOR", inspector), 2, 0);
         return layout;
     }
 
-    private Control CreateScenePanel()
+    private Control BuildLeftSidebar()
     {
-        var panel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = PanelColor,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = new Padding(6, 0, 6, 0)
-        };
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var tabs = new StudioTabControl { Dock = DockStyle.Fill };
+        var scenePage = NewTab("Scene");
+        scenePage.Controls.Add(hierarchy);
 
-        var header = new Panel { Dock = DockStyle.Fill, BackColor = HeaderColor };
-        header.Controls.Add(sceneTitle);
-        panel.Controls.Add(header, 0, 0);
-        panel.Controls.Add(sceneView, 0, 1);
-        return panel;
+        var layersPage = NewTab("Layers");
+        layersPage.Controls.Add(CreateInfoList(
+            "Ground", "Objects", "Collision", "Entities", "Triggers"));
+
+        var settingsPage = NewTab("Settings");
+        settingsPage.Controls.Add(CreateInfoList(
+            "Project", "Rendering", "Input", "Audio", "PSP Build"));
+
+        tabs.TabPages.Add(scenePage);
+        tabs.TabPages.Add(layersPage);
+        tabs.TabPages.Add(settingsPage);
+        return tabs;
     }
 
-    private static Control CreatePanel(string title, Control content)
+    private Control BuildCenterWorkspace()
     {
-        var panel = new TableLayoutPanel
+        var split = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            BackColor = PanelColor,
-            ColumnCount = 1,
-            RowCount = 2
+            Orientation = Orientation.Horizontal,
+            SplitterDistance = 480,
+            BackColor = Color.FromArgb(20, 22, 26),
+            Panel1MinSize = 250,
+            Panel2MinSize = 130
         };
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(new Label
+        var documents = new StudioTabControl { Dock = DockStyle.Fill };
+        var viewport = NewTab("2D Viewport");
+        sceneView.Dock = DockStyle.Fill;
+        viewport.Controls.Add(sceneView);
+        viewport.Controls.Add(BuildViewportToolbar());
+        var graph = NewTab("Event Graph");
+        graph.Controls.Add(new EventGraphPreview { Dock = DockStyle.Fill });
+        documents.TabPages.Add(viewport);
+        documents.TabPages.Add(graph);
+
+        var bottom = new StudioTabControl
         {
-            Text = title,
             Dock = DockStyle.Fill,
-            BackColor = HeaderColor,
-            ForeColor = TextColor,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(8, 0, 0, 0),
-            Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold)
-        }, 0, 0);
-        panel.Controls.Add(content, 0, 1);
-        return panel;
+            ItemSize = new Size(100, 25)
+        };
+        var files = NewTab("Files");
+        assetBrowser.Dock = DockStyle.Fill;
+        files.Controls.Add(assetBrowser);
+        var log = NewTab("Log");
+        buildLog.Dock = DockStyle.Fill;
+        buildLog.ReadOnly = true;
+        buildLog.BackColor = Color.FromArgb(25, 28, 33);
+        buildLog.ForeColor = Color.FromArgb(187, 194, 204);
+        buildLog.BorderStyle = BorderStyle.None;
+        buildLog.Font = new Font("Consolas", 9);
+        log.Controls.Add(buildLog);
+        bottom.TabPages.Add(files);
+        bottom.TabPages.Add(log);
+
+        split.Panel1.Controls.Add(documents);
+        split.Panel2.Controls.Add(bottom);
+        return split;
+    }
+
+    private ToolStrip BuildViewportToolbar()
+    {
+        var toolbar = new ToolStrip
+        {
+            Dock = DockStyle.Top,
+            Height = 28,
+            GripStyle = ToolStripGripStyle.Hidden,
+            BackColor = Color.FromArgb(39, 42, 49),
+            ForeColor = EditorTheme.Text,
+            Renderer = new ToolStripProfessionalRenderer(new DarkColorTable()),
+            Padding = new Padding(4, 1, 4, 1)
+        };
+        toolbar.Items.Add(new ToolStripButton("Select") { Checked = true });
+        toolbar.Items.Add(new ToolStripButton("Move"));
+        toolbar.Items.Add(new ToolStripButton("Paint"));
+        toolbar.Items.Add(new ToolStripSeparator());
+        toolbar.Items.Add(new ToolStripButton("Grid") { Checked = true });
+        toolbar.Items.Add(new ToolStripButton("PSP Frame") { Checked = true });
+        toolbar.Items.Add(new ToolStripSeparator());
+        toolbar.Items.Add(new ToolStripLabel("Camera: Main"));
+        return toolbar;
+    }
+
+    private static TabPage NewTab(string text) => new(text)
+    {
+        BackColor = Color.FromArgb(27, 30, 35),
+        ForeColor = EditorTheme.Text,
+        Padding = new Padding(0)
+    };
+
+    private static Control CreateInfoList(params string[] items)
+    {
+        var list = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            BackColor = EditorTheme.Panel,
+            ForeColor = Color.FromArgb(188, 194, 204),
+            BorderStyle = BorderStyle.None,
+            ItemHeight = 24,
+            IntegralHeight = false
+        };
+        list.Items.AddRange(items);
+        return list;
     }
 
     private void NewProject()
     {
-        if (!ConfirmDiscardChanges())
-        {
-            return;
-        }
-        ShowProject(GameProject.CreateDefault(), null);
-        status.Text = "Created a new project";
+        if (ConfirmDiscardChanges())
+            ShowProject(GameProject.CreateDefault(), null);
     }
 
     private void OpenProject()
     {
         if (!ConfirmDiscardChanges())
-        {
             return;
-        }
-
         using var dialog = new OpenFileDialog { Filter = ProjectSerializer.FileFilter };
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-        {
-            return;
-        }
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            OpenProject(dialog.FileName);
+    }
 
+    private void OpenProject(string path)
+    {
         try
         {
-            ShowProject(ProjectSerializer.Load(dialog.FileName), dialog.FileName);
-            status.Text = $"Opened {Path.GetFileName(dialog.FileName)}";
+            var loaded = ProjectSerializer.Load(path);
+            ShowProject(loaded, path);
+            status.Text = loaded.WasMigrated
+                ? "Legacy project loaded. Save to migrate it to format v2."
+                : $"Opened {Path.GetFileName(path)}";
+            dirty = loaded.WasMigrated;
+            UpdateTitle();
         }
         catch (Exception exception)
         {
@@ -287,21 +307,19 @@ public sealed class MainForm : Form
         }
     }
 
-    private void SaveProject(bool choosePath)
+    private bool SaveProject(bool choosePath)
     {
         if (choosePath || projectPath is null)
         {
             using var dialog = new SaveFileDialog
             {
-                FileName = $"{MakeSafeFileName(project.Name)}{ProjectSerializer.FileExtension}",
-                DefaultExt = ProjectSerializer.FileExtension.TrimStart('.'),
+                FileName = $"{SafeName(project.Name)}{ProjectSerializer.FileExtension}",
+                DefaultExt = "psprpg",
                 AddExtension = true,
                 Filter = ProjectSerializer.FileFilter
             };
             if (dialog.ShowDialog(this) != DialogResult.OK)
-            {
-                return;
-            }
+                return false;
             projectPath = dialog.FileName;
         }
 
@@ -309,79 +327,106 @@ public sealed class MainForm : Form
         {
             ProjectSerializer.Save(project, projectPath);
             dirty = false;
+            assetBrowser.SetProject(projectPath);
             UpdateTitle();
             status.Text = $"Saved {Path.GetFileName(projectPath)}";
+            return true;
         }
         catch (Exception exception)
         {
             MessageBox.Show(exception.Message, "Cannot save project",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
         }
     }
 
     private void AddEntity()
     {
-        var scene = sceneView.Scene;
-        if (scene is null)
-        {
+        if (sceneView.Scene is not { } scene)
             return;
-        }
-
-        var number = scene.Entities.Count + 1;
         var entity = new EntityDocument
         {
-            Id = $"entity_{number}",
-            Name = $"Entity {number}",
-            X = 224,
-            Y = 120,
-            Width = 32,
-            Height = 32,
-            Color = "#FFB347FF"
+            Name = $"Entity {scene.Entities.Count + 1}",
+            Transform = new Transform2D { X = 224, Y = 120 },
+            SpriteRenderer = new SpriteRenderer { Color = "#FFB347FF" }
         };
         scene.Entities.Add(entity);
         sceneView.SelectedEntity = entity;
-        RefreshHierarchy(entity);
         inspector.SelectedObject = entity;
-        sceneView.Invalidate();
-        MarkChanged();
-        status.Text = $"Added {entity.Name}";
+        ProjectChanged();
     }
 
     private void DeleteSelected()
     {
         if (inspector.SelectedObject is not EntityDocument entity ||
             sceneView.Scene is not { } scene)
-        {
             return;
-        }
-
         scene.Entities.Remove(entity);
         sceneView.SelectedEntity = null;
         inspector.SelectedObject = scene;
-        RefreshHierarchy(scene);
-        sceneView.Invalidate();
-        MarkChanged();
-        status.Text = $"Deleted {entity.Name}";
+        ProjectChanged();
     }
 
-    private void SelectObject(object? selectedObject)
+    private async void BuildProject(bool run)
     {
-        if (selectedObject is null)
-        {
+        if (projectPath is null && !SaveProject(true))
             return;
-        }
+        if (dirty && !SaveProject(false))
+            return;
 
-        inspector.SelectedObject = selectedObject;
-        if (selectedObject is SceneDocument scene)
+        try
         {
-            sceneView.Scene = scene;
-            sceneView.SelectedEntity = null;
-            sceneTitle.Text = scene.Name;
+            var tools = ToolchainService.Detect(settings);
+            var result = BuildService.Build(project, projectPath!, tools);
+            if (result.EbootPath is null && tools.HasPspToolchain)
+            {
+                var projectDirectory = Path.GetDirectoryName(
+                    Path.GetFullPath(projectPath!))!;
+                var repositoryRoot = BuildService.FindRepositoryRoot(projectDirectory);
+                if (repositoryRoot is not null)
+                {
+                    status.Text = "Building PSP runtime...";
+                    var runtimeBuild = await BuildService.BuildRuntimeAsync(repositoryRoot);
+                    if (runtimeBuild.ExitCode != 0)
+                        throw new InvalidOperationException(
+                            "PSP runtime build failed:\n\n" + runtimeBuild.Output);
+                    result = BuildService.Build(project, projectPath!, tools);
+                }
+            }
+            status.Text = string.Join(" ", result.Messages);
+            AppendLog(result.Messages);
+
+            if (!run)
+            {
+                MessageBox.Show(string.Join(Environment.NewLine, result.Messages) +
+                    $"\n\nOutput: {result.OutputDirectory}", "Build complete");
+                return;
+            }
+
+            if (result.EbootPath is null)
+                throw new InvalidOperationException(
+                    "game.pak was built, but EBOOT.PBP is missing. Build the PSP runtime first.");
+            if (!tools.HasPpsspp)
+                throw new InvalidOperationException(
+                    "PPSSPP was not found. Configure its path in Build > Toolchain settings.");
+            ToolchainService.LaunchPpsspp(tools.PpssppPath, result.EbootPath);
         }
-        else if (selectedObject is EntityDocument entity)
+        catch (Exception exception)
         {
-            sceneView.SelectedEntity = entity;
-            sceneView.Invalidate();
+            MessageBox.Show(exception.Message, "Build failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ConfigureTools()
+    {
+        using var dialog = new ToolchainSettingsForm(settings);
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            ToolchainService.SaveSettings(settings);
+            var detected = ToolchainService.Detect(settings);
+            status.Text = $"PSPSDK: {(detected.HasPspToolchain ? "found" : "missing")} | " +
+                          $"PPSSPP: {(detected.HasPpsspp ? "found" : "missing")}";
         }
     }
 
@@ -390,53 +435,65 @@ public sealed class MainForm : Form
         project = value;
         projectPath = path;
         dirty = false;
-
-        var startup = project.Scenes.FirstOrDefault(
+        sceneView.Scene = project.Scenes.FirstOrDefault(
             scene => scene.Id == project.StartupScene) ?? project.Scenes.FirstOrDefault();
-        sceneView.Scene = startup;
         sceneView.SelectedEntity = null;
-        sceneTitle.Text = startup?.Name ?? "Scene";
         inspector.SelectedObject = project;
-        RefreshHierarchy(project);
-        UpdateTitle();
+        assetBrowser.SetProject(path);
+        ProjectChanged(markDirty: false);
     }
 
-    private void RefreshHierarchy(object? selection = null)
+    private void SelectObject(object? value)
     {
+        if (value is null)
+            return;
+        inspector.SelectedObject = value;
+        if (value is SceneDocument scene)
+        {
+            sceneView.Scene = scene;
+            sceneView.SelectedEntity = null;
+        }
+        else if (value is EntityDocument entity)
+            sceneView.SelectedEntity = entity;
+        sceneView.Invalidate();
+    }
+
+    private void ProjectChanged() => ProjectChanged(true);
+
+    private void ProjectChanged(bool markDirty)
+    {
+        dirty |= markDirty;
+        var selected = inspector.SelectedObject;
         hierarchy.BeginUpdate();
         hierarchy.Nodes.Clear();
-
-        var projectNode = new TreeNode(project.Name) { Tag = project };
+        var root = new TreeNode(project.Name) { Tag = project };
         foreach (var scene in project.Scenes)
         {
-            var sceneNode = new TreeNode($"▦  {scene.Name}") { Tag = scene };
+            var sceneNode = new TreeNode($"Scene: {scene.Name}") { Tag = scene };
             foreach (var entity in scene.Entities)
-            {
-                sceneNode.Nodes.Add(new TreeNode($"◆  {entity.Name}") { Tag = entity });
-            }
-            projectNode.Nodes.Add(sceneNode);
+                sceneNode.Nodes.Add(new TreeNode(entity.Name) { Tag = entity });
+            root.Nodes.Add(sceneNode);
         }
-
-        hierarchy.Nodes.Add(projectNode);
-        projectNode.ExpandAll();
+        hierarchy.Nodes.Add(root);
+        root.ExpandAll();
         hierarchy.EndUpdate();
-        SelectHierarchyObject(selection);
+        SelectHierarchyObject(selected);
+        sceneView.Invalidate();
+        inspector.RefreshView();
+        UpdateTitle();
     }
 
     private void SelectHierarchyObject(object? value)
     {
         if (value is null)
-        {
             return;
-        }
-
-        foreach (TreeNode root in hierarchy.Nodes)
+        foreach (TreeNode node in hierarchy.Nodes)
         {
-            var match = FindNode(root, value);
+            var match = FindNode(node, value);
             if (match is not null)
             {
                 hierarchy.SelectedNode = match;
-                return;
+                break;
             }
         }
     }
@@ -444,17 +501,12 @@ public sealed class MainForm : Form
     private static TreeNode? FindNode(TreeNode node, object value)
     {
         if (ReferenceEquals(node.Tag, value))
-        {
             return node;
-        }
-
         foreach (TreeNode child in node.Nodes)
         {
-            var match = FindNode(child, value);
-            if (match is not null)
-            {
-                return match;
-            }
+            var result = FindNode(child, value);
+            if (result is not null)
+                return result;
         }
         return null;
     }
@@ -462,271 +514,70 @@ public sealed class MainForm : Form
     private bool ConfirmDiscardChanges()
     {
         if (!dirty)
-        {
             return true;
-        }
-
-        var result = MessageBox.Show(
-            "This project has unsaved changes. Save them now?",
-            "PSP RPG Editor", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
-        if (result == DialogResult.Cancel)
+        var result = MessageBox.Show("Save changes before continuing?",
+            "PSP RPG Studio", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+        return result switch
         {
-            return false;
-        }
-        if (result == DialogResult.Yes)
-        {
-            SaveProject(false);
-            return !dirty;
-        }
-        return true;
+            DialogResult.Yes => SaveProject(false),
+            DialogResult.No => true,
+            _ => false
+        };
     }
 
-    private void MarkChanged()
+    private void UpdateTitle() =>
+        Text = $"PSP RPG Studio - {project.Name}{(dirty ? " *" : "")}";
+
+    private void AppendLog(IEnumerable<string> messages)
     {
-        dirty = true;
-        UpdateTitle();
-        status.Text = "Project has unsaved changes";
+        foreach (var message in messages)
+            buildLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
     }
 
-    private void UpdateTitle()
+    private static string SafeName(string value)
     {
-        Text = $"PSP RPG Editor — {project.Name}{(dirty ? " *" : "")}";
-    }
-
-    private static string MakeSafeFileName(string name)
-    {
-        foreach (var invalid in Path.GetInvalidFileNameChars())
-        {
-            name = name.Replace(invalid, '_');
-        }
-        return string.IsNullOrWhiteSpace(name) ? "game" : name;
-    }
-
-    private static void ShowBuildInfo()
-    {
-        MessageBox.Show(
-            "The editor project format is ready.\n\n" +
-            "Next milestone: compile this scene into game.pak and attach it to EBOOT.PBP.",
-            "Build for PSP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        foreach (var character in Path.GetInvalidFileNameChars())
+            value = value.Replace(character, '_');
+        return string.IsNullOrWhiteSpace(value) ? "Game" : value;
     }
 }
 
-internal sealed class SceneView : Control
+internal sealed class ToolchainSettingsForm : Form
 {
-    private const int GridSize = 16;
-    private const int MarginSize = 40;
-    private EntityDocument? draggingEntity;
-    private PointF dragOffset;
-    private float scale = 1;
-    private PointF origin;
-
-    public event Action<EntityDocument?>? SelectionChanged;
-    public event Action? SceneChanged;
-
-    public SceneDocument? Scene { get; set; }
-    public EntityDocument? SelectedEntity { get; set; }
-
-    public SceneView()
+    public ToolchainSettingsForm(EditorSettings settings)
     {
-        DoubleBuffered = true;
-        BackColor = Color.FromArgb(22, 24, 28);
-        Cursor = Cursors.Cross;
-        SetStyle(ControlStyles.Selectable, true);
-    }
+        Text = "Toolchain settings";
+        Width = 620;
+        Height = 190;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
+        MaximizeBox = false;
+        MinimizeBox = false;
 
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        if (Scene is null)
+        var pspDev = new TextBox { Text = settings.PspDevPath, Dock = DockStyle.Fill };
+        var ppsspp = new TextBox { Text = settings.PpssppPath, Dock = DockStyle.Fill };
+        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK };
+        ok.Click += (_, _) =>
         {
-            return;
-        }
-
-        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
-        CalculateViewport();
-        var worldWidth = Scene.Width * scale;
-        var worldHeight = Scene.Height * scale;
-
-        using var worldBrush = new SolidBrush(Color.FromArgb(66, 91, 48));
-        e.Graphics.FillRectangle(worldBrush, origin.X, origin.Y, worldWidth, worldHeight);
-        DrawGrid(e.Graphics);
-
-        foreach (var entity in Scene.Entities)
-        {
-            var rectangle = EntityRectangle(entity);
-            using var brush = new SolidBrush(ParseColor(entity.Color));
-            e.Graphics.FillRectangle(brush, rectangle);
-
-            using var shadow = new SolidBrush(Color.FromArgb(80, 0, 0, 0));
-            e.Graphics.FillRectangle(shadow, rectangle.X, rectangle.Bottom - 4, rectangle.Width, 4);
-
-            if (ReferenceEquals(entity, SelectedEntity))
-            {
-                using var selectionPen = new Pen(Color.FromArgb(255, 230, 90), 2);
-                e.Graphics.DrawRectangle(selectionPen, rectangle.X - 2, rectangle.Y - 2,
-                    rectangle.Width + 4, rectangle.Height + 4);
-                DrawHandles(e.Graphics, rectangle);
-            }
-        }
-
-        using var border = new Pen(Color.FromArgb(150, 255, 255, 255));
-        e.Graphics.DrawRectangle(border, origin.X, origin.Y, worldWidth, worldHeight);
-        DrawPspFrame(e.Graphics);
-    }
-
-    protected override void OnMouseDown(MouseEventArgs e)
-    {
-        base.OnMouseDown(e);
-        Focus();
-        if (Scene is null || e.Button != MouseButtons.Left)
-        {
-            return;
-        }
-
-        for (var index = Scene.Entities.Count - 1; index >= 0; index--)
-        {
-            var entity = Scene.Entities[index];
-            if (!EntityRectangle(entity).Contains(e.Location))
-            {
-                continue;
-            }
-
-            SelectedEntity = entity;
-            draggingEntity = entity;
-            var world = ScreenToWorld(e.Location);
-            dragOffset = new PointF(world.X - entity.X, world.Y - entity.Y);
-            Cursor = Cursors.SizeAll;
-            SelectionChanged?.Invoke(entity);
-            Invalidate();
-            return;
-        }
-
-        SelectedEntity = null;
-        SelectionChanged?.Invoke(null);
-        Invalidate();
-    }
-
-    protected override void OnMouseMove(MouseEventArgs e)
-    {
-        base.OnMouseMove(e);
-        if (draggingEntity is null || Scene is null)
-        {
-            return;
-        }
-
-        var world = ScreenToWorld(e.Location);
-        var x = Snap(world.X - dragOffset.X);
-        var y = Snap(world.Y - dragOffset.Y);
-        draggingEntity.X = Math.Clamp(x, 0, Math.Max(0, Scene.Width - draggingEntity.Width));
-        draggingEntity.Y = Math.Clamp(y, 0, Math.Max(0, Scene.Height - draggingEntity.Height));
-        SceneChanged?.Invoke();
-        Invalidate();
-    }
-
-    protected override void OnMouseUp(MouseEventArgs e)
-    {
-        base.OnMouseUp(e);
-        draggingEntity = null;
-        Cursor = Cursors.Cross;
-    }
-
-    protected override void OnResize(EventArgs e)
-    {
-        base.OnResize(e);
-        Invalidate();
-    }
-
-    private void CalculateViewport()
-    {
-        if (Scene is null)
-        {
-            return;
-        }
-        scale = Math.Min(
-            Math.Max(1, ClientSize.Width - MarginSize * 2f) / Scene.Width,
-            Math.Max(1, ClientSize.Height - MarginSize * 2f) / Scene.Height);
-        scale = Math.Clamp(scale, 0.1f, 3f);
-        origin = new PointF(
-            (ClientSize.Width - Scene.Width * scale) / 2f,
-            (ClientSize.Height - Scene.Height * scale) / 2f);
-    }
-
-    private void DrawGrid(Graphics graphics)
-    {
-        if (Scene is null || GridSize * scale < 5)
-        {
-            return;
-        }
-        using var gridPen = new Pen(Color.FromArgb(28, 255, 255, 255));
-        for (var x = 0; x <= Scene.Width; x += GridSize)
-        {
-            var sx = origin.X + x * scale;
-            graphics.DrawLine(gridPen, sx, origin.Y, sx, origin.Y + Scene.Height * scale);
-        }
-        for (var y = 0; y <= Scene.Height; y += GridSize)
-        {
-            var sy = origin.Y + y * scale;
-            graphics.DrawLine(gridPen, origin.X, sy, origin.X + Scene.Width * scale, sy);
-        }
-    }
-
-    private void DrawPspFrame(Graphics graphics)
-    {
-        if (Scene is null || Scene.Width < 480 || Scene.Height < 272)
-        {
-            return;
-        }
-        using var pspPen = new Pen(Color.FromArgb(110, 90, 180, 255), 2)
-        {
-            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+            settings.PspDevPath = pspDev.Text.Trim();
+            settings.PpssppPath = ppsspp.Text.Trim();
         };
-        graphics.DrawRectangle(pspPen, origin.X, origin.Y, 480 * scale, 272 * scale);
-        using var font = new Font(SystemFonts.DefaultFont.FontFamily, 8);
-        using var brush = new SolidBrush(Color.FromArgb(190, 150, 210, 255));
-        graphics.DrawString("PSP viewport 480×272", font, brush, origin.X + 5, origin.Y + 5);
-    }
 
-    private static void DrawHandles(Graphics graphics, RectangleF rectangle)
-    {
-        const float size = 6;
-        using var brush = new SolidBrush(Color.White);
-        foreach (var point in new[]
+        var layout = new TableLayoutPanel
         {
-            new PointF(rectangle.Left, rectangle.Top),
-            new PointF(rectangle.Right, rectangle.Top),
-            new PointF(rectangle.Left, rectangle.Bottom),
-            new PointF(rectangle.Right, rectangle.Bottom)
-        })
-        {
-            graphics.FillRectangle(brush, point.X - size / 2, point.Y - size / 2, size, size);
-        }
-    }
-
-    private RectangleF EntityRectangle(EntityDocument entity) => new(
-        origin.X + entity.X * scale,
-        origin.Y + entity.Y * scale,
-        entity.Width * scale,
-        entity.Height * scale);
-
-    private PointF ScreenToWorld(Point point) => new(
-        (point.X - origin.X) / scale,
-        (point.Y - origin.Y) / scale);
-
-    private static float Snap(float value) =>
-        MathF.Round(value / GridSize) * GridSize;
-
-    private static Color ParseColor(string value)
-    {
-        if (value.Length == 9 &&
-            uint.TryParse(value.AsSpan(1), NumberStyles.HexNumber,
-                CultureInfo.InvariantCulture, out var rgba))
-        {
-            return Color.FromArgb(
-                (int)(rgba & 0xFF),
-                (int)((rgba >> 24) & 0xFF),
-                (int)((rgba >> 16) & 0xFF),
-                (int)((rgba >> 8) & 0xFF));
-        }
-        return Color.Magenta;
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12),
+            ColumnCount = 2,
+            RowCount = 3
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.Controls.Add(new Label { Text = "PSPDEV folder:", AutoSize = true }, 0, 0);
+        layout.Controls.Add(pspDev, 1, 0);
+        layout.Controls.Add(new Label { Text = "PPSSPP exe:", AutoSize = true }, 0, 1);
+        layout.Controls.Add(ppsspp, 1, 1);
+        layout.Controls.Add(ok, 1, 2);
+        Controls.Add(layout);
+        AcceptButton = ok;
     }
 }
