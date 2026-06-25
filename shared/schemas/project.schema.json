@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psprpg.dev/schemas/project-v1.json",
+  "title": "PSP RPG project",
+  "type": "object",
+  "required": ["formatVersion", "name", "startupScene", "scenes"],
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "startupScene": { "type": "string", "minLength": 1 },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "width", "height", "entities"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "width": { "type": "integer", "minimum": 480 },
+          "height": { "type": "integer", "minimum": 272 },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "x", "y", "width", "height", "color"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "x": { "type": "number" },
+                "y": { "type": "number" },
+                "width": { "type": "number", "exclusiveMinimum": 0 },
+                "height": { "type": "number", "exclusiveMinimum": 0 },
+                "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{8}$" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

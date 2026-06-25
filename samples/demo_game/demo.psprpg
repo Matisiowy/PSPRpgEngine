@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "name": "PSP RPG Demo",
+  "startupScene": "village",
+  "scenes": [
+    {
+      "id": "village",
+      "name": "Village",
+      "width": 960,
+      "height": 544,
+      "entities": [
+        {
+          "id": "player",
+          "name": "Player",
+          "x": 224,
+          "y": 120,
+          "width": 32,
+          "height": 32,
+          "color": "#4DA6FFFF"
+        },
+        {
+          "id": "npc_guide",
+          "name": "Guide",
+          "x": 300,
+          "y": 112,
+          "width": 32,
+          "height": 40,
+          "color": "#FFB347FF"
+        }
+      ]
+    }
+  ]
+}

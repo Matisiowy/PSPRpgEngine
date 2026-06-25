@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "name": "New PSP RPG",
+  "startupScene": "main",
+  "scenes": [
+    {
+      "id": "main",
+      "name": "Main Scene",
+      "width": 480,
+      "height": 272,
+      "entities": [
+        {
+          "id": "player",
+          "name": "Player",
+          "x": 224,
+          "y": 120,
+          "width": 32,
+          "height": 32,
+          "color": "#4DA6FFFF"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+build/
+out/
+artifacts/
+.vs/
+.vscode/
+bin/
+obj/
+*.user
+*.suo
+*.elf
+*.prx
+*.pbp
+*.pak
+
